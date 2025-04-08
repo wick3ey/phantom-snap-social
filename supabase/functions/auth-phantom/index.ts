@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
@@ -122,7 +123,10 @@ serve(async (req) => {
         
         let publicKeyBytes;
         try {
-          publicKeyBytes = bs58.decode(walletAddress);
+          // Sanitize wallet address in case it's not a clean base58 string
+          const cleanWalletAddress = walletAddress.trim();
+          console.log("Attempting to decode wallet address:", cleanWalletAddress);
+          publicKeyBytes = bs58.decode(cleanWalletAddress);
           console.log("Public key decoded successfully, length:", publicKeyBytes.length);
         } catch (decodeError) {
           console.error("Failed to decode public key:", decodeError.message);
