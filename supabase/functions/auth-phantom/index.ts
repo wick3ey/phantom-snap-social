@@ -143,23 +143,36 @@ serve(async (req) => {
         const messageBytes = new TextEncoder().encode(nonce);
         
         console.log("Running verification check");
-        const verified = nacl.sign.detached.verify(
-          messageBytes, 
-          signatureBytes, 
-          publicKeyBytes
-        );
         
-        console.log("Verification result:", verified);
-        
-        if (!verified) {
-          console.error("Invalid signature");
+        // Make sure we're properly using the tweetnacl library's verification method
+        try {
+          const verified = nacl.sign.detached.verify(
+            messageBytes, 
+            signatureBytes, 
+            publicKeyBytes
+          );
+          
+          console.log("Verification result:", verified);
+          
+          if (!verified) {
+            console.error("Invalid signature");
+            return new Response(
+              JSON.stringify({ error: "Invalid signature" }),
+              {
+                status: 401,
+                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              }
+            )
+          }
+        } catch (verifyError) {
+          console.error("Error during verification:", verifyError.message);
           return new Response(
-            JSON.stringify({ error: "Invalid signature" }),
+            JSON.stringify({ error: `Verification error: ${verifyError.message}` }),
             {
-              status: 401,
+              status: 500,
               headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
-          )
+          );
         }
         
         console.log("Signature verified, checking for existing user");
