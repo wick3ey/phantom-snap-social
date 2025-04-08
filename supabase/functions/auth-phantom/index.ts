@@ -78,9 +78,14 @@ serve(async (req) => {
       
       console.log("Verifying signature for wallet:", walletAddress);
       console.log("Nonce:", nonce);
+      console.log("Signature:", signature ? `${signature.substring(0, 10)}...` : "undefined");
       
       if (!walletAddress || !signature || !nonce) {
-        console.error("Missing required parameters");
+        console.error("Missing required parameters", {
+          hasWalletAddress: !!walletAddress,
+          hasSignature: !!signature,
+          hasNonce: !!nonce
+        });
         return new Response(
           JSON.stringify({ error: "Missing required parameters" }),
           {
@@ -92,12 +97,42 @@ serve(async (req) => {
       
       // Verify the signature
       try {
-        console.log("Decoding signature and public key");
-        const signatureBytes = bs58.decode(signature);
-        const publicKeyBytes = bs58.decode(walletAddress);
+        console.log("Attempting to decode signature and public key");
+        
+        // Debugging step by step
+        let signatureBytes;
+        try {
+          signatureBytes = bs58.decode(signature);
+          console.log("Signature decoded successfully");
+        } catch (decodeError) {
+          console.error("Failed to decode signature:", decodeError.message);
+          return new Response(
+            JSON.stringify({ error: `Invalid signature format: ${decodeError.message}` }),
+            {
+              status: 400,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            }
+          );
+        }
+        
+        let publicKeyBytes;
+        try {
+          publicKeyBytes = bs58.decode(walletAddress);
+          console.log("Public key decoded successfully");
+        } catch (decodeError) {
+          console.error("Failed to decode public key:", decodeError.message);
+          return new Response(
+            JSON.stringify({ error: `Invalid public key format: ${decodeError.message}` }),
+            {
+              status: 400,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            }
+          );
+        }
+        
         const messageBytes = new TextEncoder().encode(nonce);
         
-        console.log("Running verification");
+        console.log("Running verification check");
         const verified = nacl.sign.detached.verify(
           messageBytes, 
           signatureBytes, 
@@ -190,12 +225,22 @@ serve(async (req) => {
         }
         
         console.log("Generating session link for user:", userId);
+        
+        // Determine the correct redirectTo URL based on origin
+        let redirectTo = origin || 'https://dgfun.xyz';
+        // Make sure the redirectTo URL ends with a trailing slash
+        if (!redirectTo.endsWith('/')) {
+          redirectTo += '/';
+        }
+        
+        console.log("Using redirectTo URL:", redirectTo);
+        
         // Create a custom token
         const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
           type: 'magiclink',
           email: `${walletAddress.slice(0, 10)}@phantom.solana.user`,
           options: {
-            redirectTo: origin || '/',
+            redirectTo
           }
         });
         
@@ -211,22 +256,47 @@ serve(async (req) => {
         }
 
         // Extract the token from the URL
-        const properties = new URL(sessionData.properties.action_link).searchParams;
-        const token = properties.get('token');
-        
-        console.log("Session generated successfully");
-        // Return the session info
-        return new Response(
-          JSON.stringify({
-            userId,
-            token,
-            walletAddress,
-          }),
-          {
-            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-            status: 200,
+        try {
+          const actionLink = sessionData.properties.action_link;
+          console.log("Generated action link:", actionLink);
+          
+          const properties = new URL(actionLink).searchParams;
+          const token = properties.get('token');
+          
+          if (!token) {
+            console.error("Token not found in action link");
+            return new Response(
+              JSON.stringify({ error: "Failed to generate valid authentication token" }),
+              {
+                status: 500,
+                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              }
+            );
           }
-        );
+          
+          console.log("Session generated successfully");
+          // Return the session info
+          return new Response(
+            JSON.stringify({
+              userId,
+              token,
+              walletAddress,
+            }),
+            {
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              status: 200,
+            }
+          );
+        } catch (urlError) {
+          console.error("Error parsing action link URL:", urlError);
+          return new Response(
+            JSON.stringify({ error: `Failed to parse action link: ${urlError.message}` }),
+            {
+              status: 500,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            }
+          );
+        }
       } catch (error) {
         console.error("Verification error:", error);
         return new Response(

@@ -38,38 +38,56 @@ const PhantomConnectButton: React.FC = () => {
 
       toast({
         title: "Wallet Connected",
-        description: "Your Phantom wallet is now connected",
+        description: "Now signing message to verify ownership...",
       });
 
-      // Request a nonce from the server
-      const { nonce } = await requestNonce();
+      try {
+        // Request a nonce from the server
+        const nonceResponse = await requestNonce();
+        console.log("Received nonce:", nonceResponse);
 
-      // Prepare the message to be signed
-      const message = new TextEncoder().encode(nonce);
-      
-      // Request signature from the wallet
-      const { signature } = await phantom.solana.signMessage(message, "utf8");
-      
-      // Convert signature to base58 string
-      const signatureBase58 = signature.toString();
-      
-      // Verify the signature with our backend
-      const authSession = await verifySignature({
-        walletAddress,
-        signature: signatureBase58,
-        nonce
-      });
+        // Prepare the message to be signed
+        const message = new TextEncoder().encode(nonceResponse.nonce);
+        
+        // Request signature from the wallet
+        const { signature } = await phantom.solana.signMessage(message, "utf8");
+        
+        // Convert signature to base58 string
+        const signatureBase58 = Buffer.from(signature).toString("base64");
+        
+        console.log("Signature generated:", {
+          signature: signatureBase58.substring(0, 10) + "...",
+          walletAddress,
+          nonce: nonceResponse.nonce.substring(0, 10) + "..."
+        });
+        
+        // Verify the signature with our backend
+        const authSession = await verifySignature({
+          walletAddress,
+          signature: signatureBase58,
+          nonce: nonceResponse.nonce
+        });
 
-      // Update auth context with the session
-      setSession({
-        ...authSession,
-        walletAddress
-      });
+        console.log("Auth session received:", authSession);
 
-      toast({
-        title: "Authentication successful",
-        description: "You're now signed in with your Phantom wallet",
-      });
+        // Update auth context with the session
+        setSession({
+          ...authSession,
+          walletAddress
+        });
+
+        toast({
+          title: "Authentication successful",
+          description: "You're now signed in with your Phantom wallet",
+        });
+      } catch (authError: any) {
+        console.error("Authentication error:", authError);
+        toast({
+          title: "Authentication failed",
+          description: authError.message || "Failed to authenticate with your wallet",
+          variant: "destructive"
+        });
+      }
       
     } catch (error: any) {
       console.error("Connection error:", error);
