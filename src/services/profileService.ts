@@ -1,6 +1,7 @@
 
 import { Profile, ProfileFormData } from '@/types/profile';
 import { supabase } from '@/integrations/supabase/client';
+import { Database } from '@/integrations/supabase/types';
 
 // Function to get the current user's profile
 export async function getProfile(token: string): Promise<Profile> {
@@ -17,7 +18,7 @@ export async function getProfile(token: string): Promise<Profile> {
       throw new Error('Failed to fetch profile');
     }
     
-    return data;
+    return data as Profile;
   } catch (error) {
     console.error('Error fetching profile:', error);
     throw error;
@@ -44,7 +45,7 @@ export async function updateProfile(token: string, profileData: ProfileFormData)
       throw new Error('Failed to update profile');
     }
     
-    return data;
+    return data as Profile;
   } catch (error) {
     console.error('Error updating profile:', error);
     throw error;
