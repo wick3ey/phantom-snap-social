@@ -57,25 +57,50 @@ serve(async (req) => {
     return new Response(null, {
       headers: corsHeaders(origin),
       status: 200,
-    })
+    });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://pdykttdsbbcanfjcbsct.supabase.co"
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://pdykttdsbbcanfjcbsct.supabase.co";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    
+    if (!supabaseServiceKey) {
+      console.error("Missing Supabase service key");
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
-    })
+    });
 
     // Parse request body
-    const data: RequestData = await req.json()
+    let data: RequestData;
+    try {
+      data = await req.json();
+      console.log("Request data action:", data.action);
+    } catch (parseError) {
+      console.error("Failed to parse request body:", parseError);
+      return new Response(
+        JSON.stringify({ error: "Invalid request format" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+        }
+      );
+    }
     
     // Handle signature verification (SIWS only)
     if (data.action === "verifySignature") {
-      const { walletAddress, signature, signedMessage } = data
+      const { walletAddress, signature, signedMessage } = data;
       
       console.log("Verifying SIWS signature for wallet:", walletAddress);
       console.log("Request data:", {
@@ -99,7 +124,7 @@ serve(async (req) => {
             status: 400,
             headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
           }
-        )
+        );
       }
       
       // Verify the signature
@@ -167,7 +192,7 @@ serve(async (req) => {
               status: 401,
               headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
-          )
+          );
         }
         
         console.log("Signature verified, checking for existing user");

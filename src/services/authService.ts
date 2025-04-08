@@ -22,7 +22,10 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
     };
     
     const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
-      body: requestBody
+      body: requestBody,
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     
     if (error) {
