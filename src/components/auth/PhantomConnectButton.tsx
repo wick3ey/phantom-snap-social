@@ -94,19 +94,16 @@ const PhantomConnectButton: React.FC = () => {
         throw new Error("Invalid authentication response from wallet");
       }
       
-      if (!output.account) {
-        console.error("Output account is undefined:", output);
-        throw new Error("Wallet did not return account information");
+      // Extract wallet address directly from the output
+      // The response format appears to have address directly on the output object
+      const walletAddress = output.address;
+      
+      if (!walletAddress) {
+        console.error("Wallet address is missing from output:", output);
+        throw new Error("Wallet address not found in response");
       }
       
-      // Validate the output before proceeding
-      if (!output.account.address) {
-        console.error("Output account address is missing:", output.account);
-        throw new Error("Invalid authentication response from wallet");
-      }
-
-      // Convert the output for our backend
-      const walletAddress = output.account.address;
+      console.log("Using wallet address:", walletAddress);
       
       // Ensure signature and signedMessage exist before proceeding
       if (!output.signature || !output.signedMessage) {
