@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
@@ -17,12 +18,12 @@ const corsHeaders = (origin: string | null) => ({
 });
 
 interface RequestData {
-  action: "getNonce" | "verifySignature"
-  walletAddress?: string
-  signature?: string
-  nonce?: string
-  signedMessage?: string
-  useSIWS?: boolean
+  action: "verifySignature"
+  walletAddress: string
+  signature: string
+  nonce: string
+  signedMessage: string
+  useSIWS: boolean
 }
 
 // Helper to convert base64 to Uint8Array
@@ -33,16 +34,6 @@ function base64ToUint8Array(base64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
-}
-
-// Helper to verify standard signature
-function verifyStandardSignature(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
-  try {
-    return nacl.sign.detached.verify(message, signature, publicKey);
-  } catch (error) {
-    console.error("Error during standard verification:", error);
-    return false;
-  }
 }
 
 // Helper to verify SIWS signature
@@ -82,44 +73,20 @@ serve(async (req) => {
     // Parse request body
     const data: RequestData = await req.json()
     
-    // Handle nonce generation
-    if (data.action === "getNonce") {
-      // Generate a random nonce
-      const nonce = crypto.randomUUID()
-      const expiresAt = new Date()
-      expiresAt.setMinutes(expiresAt.getMinutes() + 5) // Expires in 5 minutes
+    // Handle signature verification (SIWS only)
+    if (data.action === "verifySignature") {
+      const { walletAddress, signature, signedMessage } = data
       
-      console.log("Generated nonce:", nonce);
+      console.log("Verifying SIWS signature for wallet:", walletAddress);
       
-      return new Response(
-        JSON.stringify({
-          nonce,
-          expiresAt: expiresAt.getTime(),
-        }),
-        {
-          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-          status: 200,
-        }
-      )
-    }
-    
-    // Handle signature verification
-    else if (data.action === "verifySignature") {
-      const { walletAddress, signature, nonce, signedMessage, useSIWS } = data
-      
-      console.log("Verifying signature for wallet:", walletAddress);
-      console.log("Using SIWS:", useSIWS ? "Yes" : "No");
-      console.log("Nonce:", nonce);
-      console.log("Signature:", signature ? `${signature.substring(0, 10)}...` : "undefined");
-      
-      if (!walletAddress || !signature) {
+      if (!walletAddress || !signature || !signedMessage) {
         console.error("Missing required parameters", {
           hasWalletAddress: !!walletAddress,
           hasSignature: !!signature,
-          hasNonce: !!nonce
+          hasSignedMessage: !!signedMessage
         });
         return new Response(
-          JSON.stringify({ error: "Missing required parameters" }),
+          JSON.stringify({ error: "Missing required SIWS parameters" }),
           {
             status: 400,
             headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
@@ -131,7 +98,6 @@ serve(async (req) => {
       try {
         console.log("Attempting to decode signature and public key");
         
-        // Debugging step by step
         let signatureBytes;
         try {
           signatureBytes = base64ToUint8Array(signature);
@@ -162,38 +128,28 @@ serve(async (req) => {
           );
         }
         
-        console.log("Running verification check");
-        
-        let verified = false;
-        
-        // If using SIWS, verify the signed message directly
-        if (useSIWS && signedMessage) {
-          const signedMessageBytes = base64ToUint8Array(signedMessage);
-          console.log("Verifying SIWS message, length:", signedMessageBytes.length);
-          
-          verified = verifySIWSSignature(signedMessageBytes, signatureBytes, publicKeyBytes);
-          console.log("SIWS verification result:", verified);
-        }
-        // Otherwise use standard verification with the nonce
-        else if (nonce) {
-          const messageBytes = new TextEncoder().encode(nonce);
-          console.log("Verifying standard message with nonce");
-          
-          verified = verifyStandardSignature(messageBytes, signatureBytes, publicKeyBytes);
-          console.log("Standard verification result:", verified);
-        } else {
-          console.error("Missing verification data: need either signedMessage or nonce");
+        let signedMessageBytes;
+        try {
+          signedMessageBytes = base64ToUint8Array(signedMessage);
+          console.log("Signed message decoded successfully, length:", signedMessageBytes.length);
+        } catch (decodeError) {
+          console.error("Failed to decode signed message:", decodeError.message);
           return new Response(
-            JSON.stringify({ error: "Missing verification data" }),
+            JSON.stringify({ error: `Invalid signed message format: ${decodeError.message}` }),
             {
               status: 400,
               headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
-          )
+          );
         }
         
+        console.log("Running SIWS verification check");
+        
+        const verified = verifySIWSSignature(signedMessageBytes, signatureBytes, publicKeyBytes);
+        console.log("SIWS verification result:", verified);
+        
         if (!verified) {
-          console.error("Invalid signature");
+          console.error("Invalid SIWS signature");
           return new Response(
             JSON.stringify({ error: "Invalid signature" }),
             {

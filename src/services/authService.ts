@@ -1,27 +1,6 @@
 
-import { NonceResponse, SignatureData, AuthSession } from '@/types/auth';
+import { SignatureData, AuthSession } from '@/types/auth';
 import { supabase } from '@/integrations/supabase/client';
-import { SolanaSignInInput, SolanaSignInOutput } from '@solana/wallet-standard-features';
-
-// Request a nonce from the Supabase Edge Function
-export async function requestNonce(): Promise<NonceResponse> {
-  try {
-    console.log("Requesting nonce from edge function...");
-    const { data, error } = await supabase.functions.invoke('auth-phantom', {
-      body: { action: 'getNonce' }
-    });
-    
-    if (error) {
-      console.error("Error in nonce request:", error);
-      throw new Error(error.message || 'Failed to fetch nonce');
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Error requesting nonce:', error);
-    throw new Error('Failed to send a request to the Edge Function');
-  }
-}
 
 // Verify a signature and get a session token
 export async function verifySignature(data: SignatureData): Promise<AuthSession> {
@@ -33,18 +12,14 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
       hasSignedMessage: !!data.signedMessage
     });
     
-    const requestBody: any = {
+    const requestBody = {
       action: 'verifySignature',
       walletAddress: data.walletAddress,
       signature: data.signature,
-      nonce: data.nonce
+      nonce: data.nonce,
+      signedMessage: data.signedMessage,
+      useSIWS: true
     };
-
-    // If we have a signed message (from SIWS), include it
-    if (data.signedMessage) {
-      requestBody.signedMessage = data.signedMessage;
-      requestBody.useSIWS = true;
-    }
     
     const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
       body: requestBody
@@ -52,7 +27,7 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
     
     if (error) {
       console.error("Error in verify signature response:", error);
-      throw new Error('Edge Function returned a non-2xx status code');
+      throw new Error(error.message || 'Edge Function returned a non-2xx status code');
     }
     
     if (!responseData) {
@@ -67,8 +42,8 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
       token: responseData.token,
       walletAddress: responseData.walletAddress
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error verifying signature:', error);
-    throw new Error('Edge Function returned a non-2xx status code');
+    throw new Error(error.message || 'Failed to verify signature');
   }
 }

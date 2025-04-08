@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
-import { requestNonce, verifySignature } from '@/services/authService';
+import { verifySignature } from '@/services/authService';
 import { createSignInData } from '@/services/siwsService';
-import type { SolanaSignInInput, SolanaSignInOutput } from "@solana/wallet-standard-features";
+import type { SolanaSignInOutput } from "@solana/wallet-standard-features";
 
 // Check if Phantom is installed and accessible
 const isPhantomInstalled = (): boolean => {
@@ -51,12 +51,16 @@ const PhantomConnectButton: React.FC = () => {
       const phantom = (window as any).phantom;
 
       // Check if the wallet supports SIWS
-      if (supportsSIWS(phantom)) {
-        await handleSIWS(phantom);
-      } else {
-        // Fall back to legacy connect + sign message flow
-        await handleLegacyAuth(phantom);
+      if (!supportsSIWS(phantom)) {
+        toast({
+          title: "Wallet not supported",
+          description: "Your wallet does not support Sign In With Solana. Please update your Phantom wallet to the latest version.",
+          variant: "destructive"
+        });
+        return;
       }
+
+      await handleSIWS(phantom);
     } catch (error: any) {
       console.error("Connection error:", error);
       toast({
@@ -112,66 +116,6 @@ const PhantomConnectButton: React.FC = () => {
       });
     } catch (authError: any) {
       console.error("SIWS Authentication error:", authError);
-      toast({
-        title: "Authentication failed",
-        description: authError.message || "Failed to authenticate with your wallet",
-        variant: "destructive"
-      });
-      throw authError;
-    }
-  };
-
-  const handleLegacyAuth = async (phantom: any) => {
-    // Connect to Phantom wallet
-    const { publicKey } = await phantom.solana.connect();
-    const walletAddress = publicKey.toString();
-
-    toast({
-      title: "Wallet Connected",
-      description: "Now signing message to verify ownership...",
-    });
-
-    try {
-      // Request a nonce from the server
-      const nonceResponse = await requestNonce();
-      console.log("Received nonce:", nonceResponse);
-
-      // Prepare the message to be signed
-      const message = new TextEncoder().encode(nonceResponse.nonce);
-      
-      // Request signature from the wallet
-      const { signature } = await phantom.solana.signMessage(message, "utf8");
-      
-      // Convert signature to base64 string
-      const signatureBase64 = toBase64(signature);
-      
-      console.log("Signature generated:", {
-        signature: signatureBase64.substring(0, 10) + "...",
-        walletAddress,
-        nonce: nonceResponse.nonce.substring(0, 10) + "..."
-      });
-      
-      // Verify the signature with our backend
-      const authSession = await verifySignature({
-        walletAddress,
-        signature: signatureBase64,
-        nonce: nonceResponse.nonce
-      });
-
-      console.log("Auth session received:", authSession);
-
-      // Update auth context with the session
-      setSession({
-        ...authSession,
-        walletAddress
-      });
-
-      toast({
-        title: "Authentication successful",
-        description: "You're now signed in with your Phantom wallet",
-      });
-    } catch (authError: any) {
-      console.error("Authentication error:", authError);
       toast({
         title: "Authentication failed",
         description: authError.message || "Failed to authenticate with your wallet",

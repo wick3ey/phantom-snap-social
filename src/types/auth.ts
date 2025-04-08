@@ -5,14 +5,9 @@ export interface AuthSession {
   walletAddress: string;
 }
 
-export interface NonceResponse {
-  nonce: string;
-  expiresAt: number;
-}
-
 export interface SignatureData {
   walletAddress: string;
   signature: string;
   nonce: string;
-  signedMessage?: string;
+  signedMessage: string;
 }
