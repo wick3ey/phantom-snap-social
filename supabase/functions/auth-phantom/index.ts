@@ -1,14 +1,20 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
 import { decode } from "https://esm.sh/bs58@5.0.0"
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+const allowedOrigins = [
+  "https://dgfun.xyz",
+  "https://auth.dgfun.xyz",
+  "http://localhost:5173"  // For local development
+];
+
+const corsHeaders = (origin: string | null) => ({
+  "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS"
-}
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Credentials": "true"
+});
 
 interface RequestData {
   action: "getNonce" | "verifySignature"
@@ -18,10 +24,13 @@ interface RequestData {
 }
 
 serve(async (req) => {
+  // Determine the origin
+  const origin = req.headers.get('origin');
+
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, {
-      headers: corsHeaders,
+      headers: corsHeaders(origin),
       status: 200,
     })
   }
@@ -52,7 +61,7 @@ serve(async (req) => {
           expiresAt: expiresAt.getTime(),
         }),
         {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
           status: 200,
         }
       )
@@ -67,7 +76,7 @@ serve(async (req) => {
           JSON.stringify({ error: "Missing required parameters" }),
           {
             status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
           }
         )
       }
@@ -89,7 +98,7 @@ serve(async (req) => {
             JSON.stringify({ error: "Invalid signature" }),
             {
               status: 401,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
           )
         }
@@ -124,7 +133,7 @@ serve(async (req) => {
               JSON.stringify({ error: createUserError?.message || "Failed to create user" }),
               {
                 status: 500,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
               }
             )
           }
@@ -144,7 +153,7 @@ serve(async (req) => {
               JSON.stringify({ error: profileError.message }),
               {
                 status: 500,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
               }
             )
           }
@@ -164,7 +173,7 @@ serve(async (req) => {
             JSON.stringify({ error: sessionError?.message || "Failed to generate session" }),
             {
               status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
           )
         }
@@ -181,7 +190,7 @@ serve(async (req) => {
             walletAddress,
           }),
           {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             status: 200,
           }
         )
@@ -191,7 +200,7 @@ serve(async (req) => {
           JSON.stringify({ error: "Failed to verify signature" }),
           {
             status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
           }
         )
       }
@@ -200,7 +209,7 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid action" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
         }
       )
     }
@@ -210,7 +219,7 @@ serve(async (req) => {
       JSON.stringify({ error: "Internal server error" }),
       {
         status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
       }
     )
   }
