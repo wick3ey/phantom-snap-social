@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
@@ -78,6 +77,14 @@ serve(async (req) => {
       const { walletAddress, signature, signedMessage } = data
       
       console.log("Verifying SIWS signature for wallet:", walletAddress);
+      console.log("Request data:", {
+        hasWalletAddress: !!walletAddress,
+        walletAddressLength: walletAddress?.length,
+        hasSignature: !!signature,
+        signatureLength: signature?.length,
+        hasSignedMessage: !!signedMessage,
+        signedMessageLength: signedMessage?.length,
+      });
       
       if (!walletAddress || !signature || !signedMessage) {
         console.error("Missing required parameters", {
@@ -101,7 +108,7 @@ serve(async (req) => {
         let signatureBytes;
         try {
           signatureBytes = base64ToUint8Array(signature);
-          console.log("Signature decoded successfully from base64");
+          console.log("Signature decoded successfully from base64, length:", signatureBytes.length);
         } catch (decodeError) {
           console.error("Failed to decode signature:", decodeError.message);
           return new Response(
@@ -116,7 +123,7 @@ serve(async (req) => {
         let publicKeyBytes;
         try {
           publicKeyBytes = bs58.decode(walletAddress);
-          console.log("Public key decoded successfully");
+          console.log("Public key decoded successfully, length:", publicKeyBytes.length);
         } catch (decodeError) {
           console.error("Failed to decode public key:", decodeError.message);
           return new Response(

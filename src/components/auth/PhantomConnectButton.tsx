@@ -84,20 +84,39 @@ const PhantomConnectButton: React.FC = () => {
       const signInData = createSignInData();
 
       // Send the signInInput to Phantom and trigger sign-in
-      const output: SolanaSignInOutput = await phantom.solana.signIn(signInData);
+      const output = await phantom.solana.signIn(signInData);
       
-      console.log("SIWS authentication successful:", {
-        account: output.account,
-        signatureLength: output.signature.length
-      });
-
+      console.log("SIWS authentication successful:", output);
+      
+      // Log full output structure to debug
+      if (!output) {
+        console.error("Output from signIn is undefined or null");
+        throw new Error("Invalid authentication response from wallet");
+      }
+      
+      if (!output.account) {
+        console.error("Output account is undefined:", output);
+        throw new Error("Wallet did not return account information");
+      }
+      
       // Validate the output before proceeding
-      if (!output || !output.account || !output.account.address) {
+      if (!output.account.address) {
+        console.error("Output account address is missing:", output.account);
         throw new Error("Invalid authentication response from wallet");
       }
 
       // Convert the output for our backend
       const walletAddress = output.account.address;
+      
+      // Ensure signature and signedMessage exist before proceeding
+      if (!output.signature || !output.signedMessage) {
+        console.error("Missing signature or signedMessage in authentication response", {
+          hasSignature: !!output.signature,
+          hasSignedMessage: !!output.signedMessage
+        });
+        throw new Error("Incomplete authentication response from wallet");
+      }
+      
       const signatureBase64 = toBase64(output.signature);
       const signedMessageBase64 = toBase64(output.signedMessage);
 
