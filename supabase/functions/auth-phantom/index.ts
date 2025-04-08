@@ -76,7 +76,11 @@ serve(async (req) => {
     else if (data.action === "verifySignature") {
       const { walletAddress, signature, nonce } = data
       
+      console.log("Verifying signature for wallet:", walletAddress);
+      console.log("Nonce:", nonce);
+      
       if (!walletAddress || !signature || !nonce) {
+        console.error("Missing required parameters");
         return new Response(
           JSON.stringify({ error: "Missing required parameters" }),
           {
@@ -88,17 +92,22 @@ serve(async (req) => {
       
       // Verify the signature
       try {
-        const signatureBytes = bs58.decode(signature)
-        const publicKeyBytes = bs58.decode(walletAddress)
-        const messageBytes = new TextEncoder().encode(nonce)
+        console.log("Decoding signature and public key");
+        const signatureBytes = bs58.decode(signature);
+        const publicKeyBytes = bs58.decode(walletAddress);
+        const messageBytes = new TextEncoder().encode(nonce);
         
+        console.log("Running verification");
         const verified = nacl.sign.detached.verify(
           messageBytes, 
           signatureBytes, 
           publicKeyBytes
-        )
+        );
+        
+        console.log("Verification result:", verified);
         
         if (!verified) {
+          console.error("Invalid signature");
           return new Response(
             JSON.stringify({ error: "Invalid signature" }),
             {
@@ -108,22 +117,36 @@ serve(async (req) => {
           )
         }
         
+        console.log("Signature verified, checking for existing user");
         // Search for existing user
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profileError } = await supabase
           .from("profiles")
           .select("id")
           .eq("wallet_address", walletAddress)
-          .maybeSingle()
+          .maybeSingle();
         
-        let userId: string
+        if (profileError) {
+          console.error("Error fetching profile:", profileError);
+          return new Response(
+            JSON.stringify({ error: profileError.message }),
+            {
+              status: 500,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            }
+          );
+        }
+        
+        let userId: string;
         
         if (profiles) {
           // User exists
-          userId = profiles.id
+          console.log("User exists:", profiles.id);
+          userId = profiles.id;
         } else {
           // Create a new user
-          const fakeEmail = `${walletAddress.slice(0, 10)}@phantom.solana.user`
-          const randomPassword = crypto.randomUUID()
+          console.log("Creating new user for wallet:", walletAddress);
+          const fakeEmail = `${walletAddress.slice(0, 10)}@phantom.solana.user`;
+          const randomPassword = crypto.randomUUID();
           
           // Create user in auth.users
           const { data: newUser, error: createUserError } = await supabase.auth.admin.createUser({
@@ -131,19 +154,20 @@ serve(async (req) => {
             password: randomPassword,
             email_confirm: true,
             user_metadata: { walletAddress }
-          })
+          });
           
           if (createUserError || !newUser?.user) {
+            console.error("Failed to create user:", createUserError);
             return new Response(
               JSON.stringify({ error: createUserError?.message || "Failed to create user" }),
               {
                 status: 500,
                 headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
               }
-            )
+            );
           }
           
-          userId = newUser.user.id
+          userId = newUser.user.id;
           
           // Create profile
           const { error: profileError } = await supabase
@@ -151,42 +175,46 @@ serve(async (req) => {
             .insert({
               id: userId,
               wallet_address: walletAddress
-            })
+            });
           
           if (profileError) {
+            console.error("Failed to create profile:", profileError);
             return new Response(
               JSON.stringify({ error: profileError.message }),
               {
                 status: 500,
                 headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
               }
-            )
+            );
           }
         }
         
+        console.log("Generating session link for user:", userId);
         // Create a custom token
         const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
           type: 'magiclink',
           email: `${walletAddress.slice(0, 10)}@phantom.solana.user`,
           options: {
-            redirectTo: '/',
+            redirectTo: origin || '/',
           }
-        })
+        });
         
         if (sessionError || !sessionData) {
+          console.error("Failed to generate session:", sessionError);
           return new Response(
             JSON.stringify({ error: sessionError?.message || "Failed to generate session" }),
             {
               status: 500,
               headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
-          )
+          );
         }
 
         // Extract the token from the URL
-        const properties = new URL(sessionData.properties.action_link).searchParams
-        const token = properties.get('token')
+        const properties = new URL(sessionData.properties.action_link).searchParams;
+        const token = properties.get('token');
         
+        console.log("Session generated successfully");
         // Return the session info
         return new Response(
           JSON.stringify({
@@ -198,16 +226,16 @@ serve(async (req) => {
             headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             status: 200,
           }
-        )
+        );
       } catch (error) {
-        console.error("Verification error:", error)
+        console.error("Verification error:", error);
         return new Response(
-          JSON.stringify({ error: "Failed to verify signature" }),
+          JSON.stringify({ error: `Failed to verify signature: ${error.message}` }),
           {
             status: 500,
             headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
           }
-        )
+        );
       }
     } else {
       return new Response(
@@ -216,16 +244,16 @@ serve(async (req) => {
           status: 400,
           headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
         }
-      )
+      );
     }
   } catch (error) {
-    console.error("Error:", error)
+    console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: `Internal server error: ${error.message}` }),
       {
         status: 500,
         headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
       }
-    )
+    );
   }
 })
