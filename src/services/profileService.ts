@@ -1,25 +1,23 @@
 
 import { Profile, ProfileFormData } from '@/types/profile';
-
-// Replace with your actual API URL
-const API_URL = 'https://api.example.com';
+import { supabase } from '@/integrations/supabase/client';
 
 // Function to get the current user's profile
 export async function getProfile(token: string): Promise<Profile> {
   try {
-    const response = await fetch(`${API_URL}/profile`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
+    // Setup auth header
+    supabase.auth.setSession({ access_token: token, refresh_token: '' });
     
-    if (!response.ok) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .single();
+    
+    if (error) {
       throw new Error('Failed to fetch profile');
     }
     
-    return await response.json();
+    return data;
   } catch (error) {
     console.error('Error fetching profile:', error);
     throw error;
@@ -29,20 +27,24 @@ export async function getProfile(token: string): Promise<Profile> {
 // Function to update the user's profile
 export async function updateProfile(token: string, profileData: ProfileFormData): Promise<Profile> {
   try {
-    const response = await fetch(`${API_URL}/profile`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(profileData),
-    });
+    // Setup auth header
+    supabase.auth.setSession({ access_token: token, refresh_token: '' });
     
-    if (!response.ok) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        username: profileData.username,
+        display_name: profileData.display_name,
+        bio: profileData.bio
+      })
+      .select('*')
+      .single();
+    
+    if (error) {
       throw new Error('Failed to update profile');
     }
     
-    return await response.json();
+    return data;
   } catch (error) {
     console.error('Error updating profile:', error);
     throw error;
@@ -52,22 +54,39 @@ export async function updateProfile(token: string, profileData: ProfileFormData)
 // Function to upload a profile image
 export async function uploadProfileImage(token: string, file: File): Promise<{ url: string }> {
   try {
-    const formData = new FormData();
-    formData.append('image', file);
+    // Setup auth header
+    supabase.auth.setSession({ access_token: token, refresh_token: '' });
     
-    const response = await fetch(`${API_URL}/profile/image`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-      body: formData,
-    });
+    const user = supabase.auth.getUser();
+    const userId = (await user).data.user?.id;
     
-    if (!response.ok) {
-      throw new Error('Failed to upload image');
+    if (!userId) {
+      throw new Error('User not authenticated');
     }
     
-    return await response.json();
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${userId}/${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('profile_images')
+      .upload(filePath, file);
+    
+    if (uploadError) {
+      throw uploadError;
+    }
+    
+    const { data: urlData } = supabase.storage
+      .from('profile_images')
+      .getPublicUrl(filePath);
+    
+    // Update the profile with the new image URL
+    await supabase
+      .from('profiles')
+      .update({
+        profile_image_url: urlData.publicUrl
+      });
+    
+    return { url: urlData.publicUrl };
   } catch (error) {
     console.error('Error uploading image:', error);
     throw error;

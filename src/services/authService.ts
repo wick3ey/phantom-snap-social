@@ -1,47 +1,46 @@
 
 import { NonceResponse, SignatureData, AuthSession } from '@/types/auth';
+import { supabase } from '@/integrations/supabase/client';
 
-// Replace with your actual API URL
-const API_URL = 'https://api.example.com';
-
-// Function to request a nonce from the server
+// Request a nonce from the Supabase Edge Function
 export async function requestNonce(): Promise<NonceResponse> {
   try {
-    const response = await fetch(`${API_URL}/auth/nonce`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    const { data, error } = await supabase.functions.invoke('auth-phantom', {
+      body: { action: 'getNonce' }
     });
     
-    if (!response.ok) {
-      throw new Error('Failed to fetch nonce');
+    if (error) {
+      throw new Error(error.message || 'Failed to fetch nonce');
     }
     
-    return await response.json();
+    return data;
   } catch (error) {
     console.error('Error requesting nonce:', error);
     throw error;
   }
 }
 
-// Function to verify a signature and get a session token
+// Verify a signature and get a session token
 export async function verifySignature(data: SignatureData): Promise<AuthSession> {
   try {
-    const response = await fetch(`${API_URL}/auth/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
+    const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
+      body: {
+        action: 'verifySignature',
+        walletAddress: data.walletAddress,
+        signature: data.signature,
+        nonce: data.nonce
+      }
     });
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Verification failed');
+    if (error || !responseData) {
+      throw new Error(error?.message || 'Verification failed');
     }
     
-    return await response.json();
+    return {
+      userId: responseData.userId,
+      token: responseData.token,
+      walletAddress: responseData.walletAddress
+    };
   } catch (error) {
     console.error('Error verifying signature:', error);
     throw error;
