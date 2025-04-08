@@ -5,7 +5,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { verifySignature } from '@/services/authService';
 import { createSignInData } from '@/services/siwsService';
-import type { SolanaSignInOutput } from "@solana/wallet-standard-features";
 
 // Check if Phantom is installed and accessible
 const isPhantomInstalled = (): boolean => {
@@ -25,16 +24,22 @@ const toBase64 = (buffer: Uint8Array): string => {
       throw new Error("Empty buffer provided");
     }
     
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    // Use the more reliable and standard method
+    return btoa(String.fromCharCode.apply(null, Array.from(buffer)));
+  } catch (stringTooLongError) {
+    // Handle "Maximum call stack size exceeded" for large buffers
+    try {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    } catch (error: any) {
+      console.error("Base64 encoding error:", error);
+      throw new Error(`Failed to encode to Base64: ${error.message}`);
     }
-    return window.btoa(binary);
-  } catch (error) {
-    console.error("Base64 encoding error:", error);
-    throw new Error(`Failed to encode to Base64: ${error.message}`);
   }
 };
 
@@ -167,6 +172,13 @@ const PhantomConnectButton: React.FC = () => {
       
       while (retryCount < 3 && !authSession) {
         try {
+          console.log("Verifying signature with edge function...", {
+            walletAddress,
+            signatureLength: signatureBase64.length, 
+            signedMessageLength: signedMessageBase64.length,
+            nonceLength: signInData.nonce?.length || 0
+          });
+          
           authSession = await verifySignature({
             walletAddress,
             signature: signatureBase64,

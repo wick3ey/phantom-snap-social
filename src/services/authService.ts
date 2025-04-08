@@ -7,9 +7,27 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
   try {
     // Validate input data
     if (!data.walletAddress || !data.signature || !data.nonce || !data.signedMessage) {
+      console.error("Missing required authentication data:", {
+        hasWalletAddress: !!data.walletAddress,
+        hasSignature: !!data.signature,
+        hasNonce: !!data.nonce,
+        hasSignedMessage: !!data.signedMessage
+      });
       throw new Error('Missing required authentication data');
     }
-
+    
+    // Validate wallet address format
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(data.walletAddress)) {
+      console.error("Invalid wallet address format:", data.walletAddress);
+      throw new Error('Invalid wallet address format');
+    }
+    
+    // Validate signature length
+    if (data.signature.length < 10) {
+      console.error("Invalid signature length:", data.signature.length);
+      throw new Error('Invalid signature format');
+    }
+    
     console.log("Verifying signature with edge function...", {
       walletAddress: data.walletAddress,
       signatureLength: data.signature.length,
@@ -26,6 +44,8 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
       signedMessage: data.signedMessage,
       useSIWS: true
     };
+    
+    console.log("Sending verification request to edge function");
     
     // Make the request with proper error handling
     const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
@@ -65,6 +85,28 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
     };
   } catch (error: any) {
     console.error('Error verifying signature:', error);
+    
+    // Extract more readable error info from response if available
+    if (error.context && error.context.response) {
+      try {
+        const errorBody = await error.context.response.text();
+        console.error('Error response body:', errorBody);
+        
+        try {
+          const parsedError = JSON.parse(errorBody);
+          if (parsedError && parsedError.error) {
+            throw new Error(parsedError.error + (parsedError.details ? `: ${parsedError.details}` : ''));
+          }
+        } catch (parseError) {
+          // If we can't parse the JSON, use the raw text
+          if (errorBody && errorBody.length > 0) {
+            throw new Error(`Server error: ${errorBody.slice(0, 100)}`);
+          }
+        }
+      } catch (responseError) {
+        console.error('Failed to parse error response:', responseError);
+      }
+    }
     
     // Enhanced error reporting
     if (error.context?.status) {

@@ -24,7 +24,9 @@ interface RequestData {
 // Helper to convert base64 to Uint8Array with robust error handling
 function base64ToUint8Array(base64: string): Uint8Array {
   try {
-    // Normalize padding
+    console.log("Converting base64 string of length:", base64.length);
+    
+    // Normalize padding and characters
     const normalizedBase64 = base64.replace(/-/g, '+').replace(/_/g, '/');
     const paddingLength = 4 - (normalizedBase64.length % 4);
     const paddedBase64 = paddingLength < 4 
@@ -36,6 +38,8 @@ function base64ToUint8Array(base64: string): Uint8Array {
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
+    
+    console.log("Successfully converted base64 to Uint8Array, length:", bytes.length);
     return bytes;
   } catch (error) {
     console.error("Error converting base64 to Uint8Array:", error);
@@ -51,6 +55,16 @@ function verifySIWSSignature(signedMessage: Uint8Array, signature: Uint8Array, p
       signatureLength: signature.length,
       publicKeyLength: publicKey.length
     });
+    
+    if (signature.length !== 64) {
+      console.error(`Invalid signature length: ${signature.length}. Expected 64 bytes.`);
+      return false;
+    }
+    
+    if (publicKey.length !== 32) {
+      console.error(`Invalid public key length: ${publicKey.length}. Expected 32 bytes.`);
+      return false;
+    }
     
     return nacl.sign.detached.verify(signedMessage, signature, publicKey);
   } catch (error) {
@@ -75,13 +89,16 @@ serve(async (req) => {
 
   try {
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://pdykttdsbbcanfjcbsct.supabase.co";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
-    if (!supabaseServiceKey) {
-      console.error("Missing Supabase service key");
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Missing Supabase configuration:", {
+        hasUrl: !!supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey
+      });
       return new Response(
-        JSON.stringify({ error: "Server configuration error", details: "Missing service key" }),
+        JSON.stringify({ error: "Server configuration error", details: "Missing Supabase configuration" }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -100,7 +117,8 @@ serve(async (req) => {
     let data: RequestData;
     try {
       const bodyText = await req.text();
-      console.log("Raw request body:", bodyText);
+      console.log("Raw request body length:", bodyText.length);
+      console.log("Raw request body (first 200 chars):", bodyText.substring(0, 200));
       
       if (!bodyText) {
         console.error("Empty request body");
