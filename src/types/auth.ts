@@ -14,4 +14,5 @@ export interface SignatureData {
   walletAddress: string;
   signature: string;
   nonce: string;
+  signedMessage?: string;
 }

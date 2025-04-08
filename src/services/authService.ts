@@ -1,6 +1,7 @@
 
 import { NonceResponse, SignatureData, AuthSession } from '@/types/auth';
 import { supabase } from '@/integrations/supabase/client';
+import { SolanaSignInInput, SolanaSignInOutput } from '@solana/wallet-standard-features';
 
 // Request a nonce from the Supabase Edge Function
 export async function requestNonce(): Promise<NonceResponse> {
@@ -28,16 +29,25 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
     console.log("Verifying signature with edge function...", {
       walletAddress: data.walletAddress,
       signatureLength: data.signature.length,
-      nonceLength: data.nonce.length
+      nonceLength: data.nonce.length,
+      hasSignedMessage: !!data.signedMessage
     });
     
+    const requestBody: any = {
+      action: 'verifySignature',
+      walletAddress: data.walletAddress,
+      signature: data.signature,
+      nonce: data.nonce
+    };
+
+    // If we have a signed message (from SIWS), include it
+    if (data.signedMessage) {
+      requestBody.signedMessage = data.signedMessage;
+      requestBody.useSIWS = true;
+    }
+    
     const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
-      body: {
-        action: 'verifySignature',
-        walletAddress: data.walletAddress,
-        signature: data.signature,
-        nonce: data.nonce
-      }
+      body: requestBody
     });
     
     if (error) {

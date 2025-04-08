@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
@@ -22,6 +21,8 @@ interface RequestData {
   walletAddress?: string
   signature?: string
   nonce?: string
+  signedMessage?: string
+  useSIWS?: boolean
 }
 
 // Helper to convert base64 to Uint8Array
@@ -32,6 +33,26 @@ function base64ToUint8Array(base64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+// Helper to verify standard signature
+function verifyStandardSignature(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
+  try {
+    return nacl.sign.detached.verify(message, signature, publicKey);
+  } catch (error) {
+    console.error("Error during standard verification:", error);
+    return false;
+  }
+}
+
+// Helper to verify SIWS signature
+function verifySIWSSignature(signedMessage: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
+  try {
+    return nacl.sign.detached.verify(signedMessage, signature, publicKey);
+  } catch (error) {
+    console.error("Error during SIWS verification:", error);
+    return false;
+  }
 }
 
 serve(async (req) => {
@@ -84,13 +105,14 @@ serve(async (req) => {
     
     // Handle signature verification
     else if (data.action === "verifySignature") {
-      const { walletAddress, signature, nonce } = data
+      const { walletAddress, signature, nonce, signedMessage, useSIWS } = data
       
       console.log("Verifying signature for wallet:", walletAddress);
+      console.log("Using SIWS:", useSIWS ? "Yes" : "No");
       console.log("Nonce:", nonce);
       console.log("Signature:", signature ? `${signature.substring(0, 10)}...` : "undefined");
       
-      if (!walletAddress || !signature || !nonce) {
+      if (!walletAddress || !signature) {
         console.error("Missing required parameters", {
           hasWalletAddress: !!walletAddress,
           hasSignature: !!signature,
@@ -140,39 +162,45 @@ serve(async (req) => {
           );
         }
         
-        const messageBytes = new TextEncoder().encode(nonce);
-        
         console.log("Running verification check");
         
-        // Make sure we're properly using the tweetnacl library's verification method
-        try {
-          const verified = nacl.sign.detached.verify(
-            messageBytes, 
-            signatureBytes, 
-            publicKeyBytes
-          );
+        let verified = false;
+        
+        // If using SIWS, verify the signed message directly
+        if (useSIWS && signedMessage) {
+          const signedMessageBytes = base64ToUint8Array(signedMessage);
+          console.log("Verifying SIWS message, length:", signedMessageBytes.length);
           
-          console.log("Verification result:", verified);
+          verified = verifySIWSSignature(signedMessageBytes, signatureBytes, publicKeyBytes);
+          console.log("SIWS verification result:", verified);
+        }
+        // Otherwise use standard verification with the nonce
+        else if (nonce) {
+          const messageBytes = new TextEncoder().encode(nonce);
+          console.log("Verifying standard message with nonce");
           
-          if (!verified) {
-            console.error("Invalid signature");
-            return new Response(
-              JSON.stringify({ error: "Invalid signature" }),
-              {
-                status: 401,
-                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
-              }
-            )
-          }
-        } catch (verifyError) {
-          console.error("Error during verification:", verifyError.message);
+          verified = verifyStandardSignature(messageBytes, signatureBytes, publicKeyBytes);
+          console.log("Standard verification result:", verified);
+        } else {
+          console.error("Missing verification data: need either signedMessage or nonce");
           return new Response(
-            JSON.stringify({ error: `Verification error: ${verifyError.message}` }),
+            JSON.stringify({ error: "Missing verification data" }),
             {
-              status: 500,
+              status: 400,
               headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
             }
-          );
+          )
+        }
+        
+        if (!verified) {
+          console.error("Invalid signature");
+          return new Response(
+            JSON.stringify({ error: "Invalid signature" }),
+            {
+              status: 401,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            }
+          )
         }
         
         console.log("Signature verified, checking for existing user");
