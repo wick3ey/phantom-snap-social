@@ -24,6 +24,16 @@ interface RequestData {
   nonce?: string
 }
 
+// Helper to convert base64 to Uint8Array
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 serve(async (req) => {
   // Determine the origin
   const origin = req.headers.get('origin');
@@ -102,8 +112,8 @@ serve(async (req) => {
         // Debugging step by step
         let signatureBytes;
         try {
-          signatureBytes = bs58.decode(signature);
-          console.log("Signature decoded successfully");
+          signatureBytes = base64ToUint8Array(signature);
+          console.log("Signature decoded successfully from base64");
         } catch (decodeError) {
           console.error("Failed to decode signature:", decodeError.message);
           return new Response(

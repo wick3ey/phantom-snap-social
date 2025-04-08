@@ -11,6 +11,17 @@ const isPhantomInstalled = (): boolean => {
   return phantom && phantom.solana && phantom.solana.isPhantom;
 };
 
+// Helper to encode base64 string from Uint8Array
+const toBase64 = (buffer: Uint8Array): string => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
+
 const PhantomConnectButton: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const { setSession } = useAuth();
@@ -52,11 +63,11 @@ const PhantomConnectButton: React.FC = () => {
         // Request signature from the wallet
         const { signature } = await phantom.solana.signMessage(message, "utf8");
         
-        // Convert signature to base58 string
-        const signatureBase58 = Buffer.from(signature).toString("base64");
+        // Convert signature to base64 string using our browser-compatible helper
+        const signatureBase64 = toBase64(signature);
         
         console.log("Signature generated:", {
-          signature: signatureBase58.substring(0, 10) + "...",
+          signature: signatureBase64.substring(0, 10) + "...",
           walletAddress,
           nonce: nonceResponse.nonce.substring(0, 10) + "..."
         });
@@ -64,7 +75,7 @@ const PhantomConnectButton: React.FC = () => {
         // Verify the signature with our backend
         const authSession = await verifySignature({
           walletAddress,
-          signature: signatureBase58,
+          signature: signatureBase64,
           nonce: nonceResponse.nonce
         });
 
