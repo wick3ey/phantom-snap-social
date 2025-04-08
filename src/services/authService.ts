@@ -21,8 +21,9 @@ export async function verifySignature(data: SignatureData): Promise<AuthSession>
       useSIWS: true
     };
     
+    // Make the request
     const { data: responseData, error } = await supabase.functions.invoke('auth-phantom', {
-      body: requestBody,
+      body: JSON.stringify(requestBody),  // Explicitly stringify the body for better compatibility
       headers: {
         'Content-Type': 'application/json'
       }

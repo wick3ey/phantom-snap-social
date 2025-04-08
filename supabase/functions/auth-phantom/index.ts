@@ -4,21 +4,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
 import bs58 from "https://esm.sh/bs58@5.0.0"
 
-const allowedOrigins = [
-  "https://dgfun.xyz",
-  "https://auth.dgfun.xyz",
-  "http://localhost:5173",  // For local development
-  null, // Allow null origin (for testing environments)
-  // Add any Lovable preview URLs that might be needed
-  "*" // Temporarily allow all origins while debugging
-];
-
-const corsHeaders = (origin: string | null) => ({
+const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // Allow all origins during development
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Credentials": "true"
-});
+};
 
 interface RequestData {
   action: "verifySignature"
@@ -63,7 +54,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     console.log("Handling OPTIONS request");
     return new Response(null, {
-      headers: corsHeaders(origin),
+      headers: corsHeaders,
       status: 200,
     });
   }
@@ -81,7 +72,7 @@ serve(async (req) => {
         JSON.stringify({ error: "Server configuration error" }),
         {
           status: 500,
-          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
@@ -96,32 +87,44 @@ serve(async (req) => {
     // Parse request body
     let data: RequestData;
     try {
-      data = await req.json();
+      const bodyText = await req.text();
+      console.log("Raw request body:", bodyText);
+      
+      if (!bodyText) {
+        console.error("Empty request body");
+        return new Response(
+          JSON.stringify({ error: "Empty request body" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+      
+      data = JSON.parse(bodyText);
       console.log("Request data action:", data.action);
+      console.log("Request data details:", {
+        hasWalletAddress: !!data.walletAddress,
+        hasSignature: !!data.signature, 
+        hasNonce: !!data.nonce,
+        hasSignedMessage: !!data.signedMessage
+      });
     } catch (parseError) {
       console.error("Failed to parse request body:", parseError);
       return new Response(
-        JSON.stringify({ error: "Invalid request format" }),
+        JSON.stringify({ error: `Invalid request format: ${parseError.message}` }),
         {
           status: 400,
-          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
     
     // Handle signature verification (SIWS only)
     if (data.action === "verifySignature") {
-      const { walletAddress, signature, signedMessage } = data;
+      const { walletAddress, signature, signedMessage, nonce } = data;
       
       console.log("Verifying SIWS signature for wallet:", walletAddress);
-      console.log("Request data:", {
-        hasWalletAddress: !!walletAddress,
-        walletAddressLength: walletAddress?.length,
-        hasSignature: !!signature,
-        signatureLength: signature?.length,
-        hasSignedMessage: !!signedMessage,
-        signedMessageLength: signedMessage?.length,
-      });
       
       if (!walletAddress || !signature || !signedMessage) {
         console.error("Missing required parameters", {
@@ -133,7 +136,7 @@ serve(async (req) => {
           JSON.stringify({ error: "Missing required SIWS parameters" }),
           {
             status: 400,
-            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
       }
@@ -152,7 +155,7 @@ serve(async (req) => {
             JSON.stringify({ error: `Invalid signature format: ${decodeError.message}` }),
             {
               status: 400,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -170,7 +173,7 @@ serve(async (req) => {
             JSON.stringify({ error: `Invalid public key format: ${decodeError.message}` }),
             {
               status: 400,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -185,7 +188,7 @@ serve(async (req) => {
             JSON.stringify({ error: `Invalid signed message format: ${decodeError.message}` }),
             {
               status: 400,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -201,7 +204,7 @@ serve(async (req) => {
             JSON.stringify({ error: "Invalid signature" }),
             {
               status: 401,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -220,7 +223,7 @@ serve(async (req) => {
             JSON.stringify({ error: profileError.message }),
             {
               status: 500,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -251,7 +254,7 @@ serve(async (req) => {
               JSON.stringify({ error: createUserError?.message || "Failed to create user" }),
               {
                 status: 500,
-                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
               }
             );
           }
@@ -272,7 +275,7 @@ serve(async (req) => {
               JSON.stringify({ error: profileError.message }),
               {
                 status: 500,
-                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
               }
             );
           }
@@ -304,7 +307,7 @@ serve(async (req) => {
             JSON.stringify({ error: sessionError?.message || "Failed to generate session" }),
             {
               status: 500,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -323,7 +326,7 @@ serve(async (req) => {
               JSON.stringify({ error: "Failed to generate valid authentication token" }),
               {
                 status: 500,
-                headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
               }
             );
           }
@@ -337,7 +340,7 @@ serve(async (req) => {
               walletAddress,
             }),
             {
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
               status: 200,
             }
           );
@@ -347,7 +350,7 @@ serve(async (req) => {
             JSON.stringify({ error: `Failed to parse action link: ${urlError.message}` }),
             {
               status: 500,
-              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
             }
           );
         }
@@ -357,7 +360,7 @@ serve(async (req) => {
           JSON.stringify({ error: `Failed to verify signature: ${error.message}` }),
           {
             status: 500,
-            headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           }
         );
       }
@@ -366,7 +369,7 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid action" }),
         {
           status: 400,
-          headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
@@ -376,7 +379,7 @@ serve(async (req) => {
       JSON.stringify({ error: `Internal server error: ${error.message}` }),
       {
         status: 500,
-        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
