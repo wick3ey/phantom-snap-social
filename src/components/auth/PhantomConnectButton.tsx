@@ -91,6 +91,11 @@ const PhantomConnectButton: React.FC = () => {
         signatureLength: output.signature.length
       });
 
+      // Validate the output before proceeding
+      if (!output || !output.account || !output.account.address) {
+        throw new Error("Invalid authentication response from wallet");
+      }
+
       // Convert the output for our backend
       const walletAddress = output.account.address;
       const signatureBase64 = toBase64(output.signature);
