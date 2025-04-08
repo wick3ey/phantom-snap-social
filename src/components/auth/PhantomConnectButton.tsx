@@ -18,25 +18,42 @@ const supportsSIWS = (phantom: any): boolean => {
   return phantom && phantom.solana && 'signIn' in phantom.solana;
 };
 
-// Helper to encode base64 string from Uint8Array
+// Helper to encode base64 string from Uint8Array with error handling
 const toBase64 = (buffer: Uint8Array): string => {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  try {
+    if (!buffer || buffer.length === 0) {
+      throw new Error("Empty buffer provided");
+    }
+    
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  } catch (error) {
+    console.error("Base64 encoding error:", error);
+    throw new Error(`Failed to encode to Base64: ${error.message}`);
   }
-  return window.btoa(binary);
+};
+
+// Validate wallet address format
+const validateWalletAddress = (address: string): boolean => {
+  // Basic check for Solana address format (base58 encoding, proper length)
+  return !!address && address.length >= 32 && address.length <= 44 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(address);
 };
 
 const PhantomConnectButton: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const { setSession } = useAuth();
   const { toast } = useToast();
 
   const handleConnect = async () => {
     try {
       setIsConnecting(true);
+      setConnectionError(null);
 
       // Check if Phantom is installed
       if (!isPhantomInstalled()) {
@@ -63,6 +80,7 @@ const PhantomConnectButton: React.FC = () => {
       await handleSIWS(phantom);
     } catch (error: any) {
       console.error("Connection error:", error);
+      setConnectionError(error.message || "Failed to connect to wallet");
       toast({
         title: "Connection failed",
         description: error.message || "Failed to connect to Phantom wallet",
@@ -94,7 +112,7 @@ const PhantomConnectButton: React.FC = () => {
         throw new Error("Invalid authentication response from wallet");
       }
       
-      // Extract wallet address directly from the output
+      // Extract wallet address with validation
       let walletAddress: string;
       
       if (typeof output.address === 'string') {
@@ -104,6 +122,12 @@ const PhantomConnectButton: React.FC = () => {
       } else {
         console.error("Wallet address has unexpected format:", output.address);
         throw new Error("Wallet address format not supported");
+      }
+      
+      // Validate wallet address format
+      if (!validateWalletAddress(walletAddress)) {
+        console.error("Invalid wallet address format:", walletAddress);
+        throw new Error("Invalid wallet address format");
       }
       
       console.log("Using wallet address:", walletAddress);
@@ -116,17 +140,55 @@ const PhantomConnectButton: React.FC = () => {
         });
         throw new Error("Incomplete authentication response from wallet");
       }
-      
-      const signatureBase64 = toBase64(output.signature);
-      const signedMessageBase64 = toBase64(output.signedMessage);
 
-      // Verify the signature with our backend
-      const authSession = await verifySignature({
-        walletAddress,
-        signature: signatureBase64,
-        nonce: signInData.nonce || '', 
-        signedMessage: signedMessageBase64
-      });
+      // Convert binary data to base64 with error handling
+      let signatureBase64: string;
+      let signedMessageBase64: string;
+      
+      try {
+        signatureBase64 = toBase64(output.signature);
+        signedMessageBase64 = toBase64(output.signedMessage);
+        
+        console.log("Encoded signature length:", signatureBase64.length);
+        console.log("Encoded message length:", signedMessageBase64.length);
+        
+        if (!signatureBase64 || !signedMessageBase64) {
+          throw new Error("Failed to encode signature or message");
+        }
+      } catch (encodeError: any) {
+        console.error("Error encoding signature data:", encodeError);
+        throw new Error(`Data encoding error: ${encodeError.message}`);
+      }
+
+      // Verify the signature with retries
+      let retryCount = 0;
+      let authSession = null;
+      let lastError = null;
+      
+      while (retryCount < 3 && !authSession) {
+        try {
+          authSession = await verifySignature({
+            walletAddress,
+            signature: signatureBase64,
+            nonce: signInData.nonce || '', 
+            signedMessage: signedMessageBase64
+          });
+          break;
+        } catch (verifyError: any) {
+          console.warn(`Verification attempt ${retryCount + 1} failed:`, verifyError);
+          lastError = verifyError;
+          retryCount++;
+          
+          if (retryCount < 3) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      if (!authSession) {
+        throw lastError || new Error("Failed to verify wallet signature after multiple attempts");
+      }
 
       // Update auth context with the session
       setSession({
@@ -150,13 +212,23 @@ const PhantomConnectButton: React.FC = () => {
   };
 
   return (
-    <Button
-      onClick={handleConnect}
-      disabled={isConnecting}
-      className="phantom-gradient w-full text-white font-medium py-3 px-4 rounded-lg shadow-lg hover:opacity-90 transition-opacity"
-    >
-      {isConnecting ? "Connecting..." : "Connect with Phantom"}
-    </Button>
+    <div className="space-y-4">
+      <Button
+        onClick={handleConnect}
+        disabled={isConnecting}
+        className="phantom-gradient w-full text-white font-medium py-3 px-4 rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+      >
+        {isConnecting ? "Connecting..." : "Connect with Phantom"}
+      </Button>
+      
+      {connectionError && (
+        <div className="text-destructive text-sm bg-destructive/10 p-3 rounded-md">
+          <p className="font-medium">Connection error:</p>
+          <p>{connectionError}</p>
+          <p className="text-xs mt-1">Please try again or refresh the page.</p>
+        </div>
+      )}
+    </div>
   );
 };
 
