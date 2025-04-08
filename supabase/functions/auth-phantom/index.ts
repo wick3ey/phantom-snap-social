@@ -1,7 +1,8 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as nacl from "https://esm.sh/tweetnacl@1.0.3"
-import { decode } from "https://esm.sh/bs58@5.0.0"
+import bs58 from "https://esm.sh/bs58@5.0.0"
 
 const allowedOrigins = [
   "https://dgfun.xyz",
@@ -26,9 +27,11 @@ interface RequestData {
 serve(async (req) => {
   // Determine the origin
   const origin = req.headers.get('origin');
+  console.log("Request from origin:", origin);
 
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
+    console.log("Handling OPTIONS request");
     return new Response(null, {
       headers: corsHeaders(origin),
       status: 200,
@@ -54,6 +57,8 @@ serve(async (req) => {
       const nonce = crypto.randomUUID()
       const expiresAt = new Date()
       expiresAt.setMinutes(expiresAt.getMinutes() + 5) // Expires in 5 minutes
+      
+      console.log("Generated nonce:", nonce);
       
       return new Response(
         JSON.stringify({
@@ -83,8 +88,8 @@ serve(async (req) => {
       
       // Verify the signature
       try {
-        const signatureBytes = decode(signature)
-        const publicKeyBytes = decode(walletAddress)
+        const signatureBytes = bs58.decode(signature)
+        const publicKeyBytes = bs58.decode(walletAddress)
         const messageBytes = new TextEncoder().encode(nonce)
         
         const verified = nacl.sign.detached.verify(
