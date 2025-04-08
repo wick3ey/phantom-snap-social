@@ -7,11 +7,14 @@ import bs58 from "https://esm.sh/bs58@5.0.0"
 const allowedOrigins = [
   "https://dgfun.xyz",
   "https://auth.dgfun.xyz",
-  "http://localhost:5173"  // For local development
+  "http://localhost:5173",  // For local development
+  null, // Allow null origin (for testing environments)
+  // Add any Lovable preview URLs that might be needed
+  "*" // Temporarily allow all origins while debugging
 ];
 
 const corsHeaders = (origin: string | null) => ({
-  "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+  "Access-Control-Allow-Origin": "*", // Allow all origins during development
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Credentials": "true"
@@ -28,12 +31,17 @@ interface RequestData {
 
 // Helper to convert base64 to Uint8Array
 function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  } catch (error) {
+    console.error("Error converting base64 to Uint8Array:", error);
+    throw new Error("Invalid base64 data");
   }
-  return bytes;
 }
 
 // Helper to verify SIWS signature
@@ -61,6 +69,9 @@ serve(async (req) => {
   }
 
   try {
+    // Log request headers for debugging
+    console.log("Request headers:", Object.fromEntries(req.headers.entries()));
+    
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "https://pdykttdsbbcanfjcbsct.supabase.co";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     

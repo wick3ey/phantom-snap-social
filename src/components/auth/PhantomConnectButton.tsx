@@ -95,13 +95,11 @@ const PhantomConnectButton: React.FC = () => {
       }
       
       // Extract wallet address directly from the output
-      // Handle both string and object formats that Phantom might return
       let walletAddress: string;
       
       if (typeof output.address === 'string') {
         walletAddress = output.address;
-      } else if (output.address && output.address.toString) {
-        // If address is an object with toString method, use that
+      } else if (output.address && typeof output.address.toString === 'function') {
         walletAddress = output.address.toString();
       } else {
         console.error("Wallet address has unexpected format:", output.address);
