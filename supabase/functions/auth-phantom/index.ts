@@ -21,6 +21,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       headers: corsHeaders,
+      status: 200,
     })
   }
 
@@ -51,6 +52,7 @@ serve(async (req) => {
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
         }
       )
     }
@@ -179,6 +181,7 @@ serve(async (req) => {
           }),
           {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
           }
         )
       } catch (error) {
